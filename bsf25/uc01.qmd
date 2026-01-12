@@ -1,0 +1,154 @@
+```{r}
+library("dplyr")
+library("cmdstanr")
+```
+
+Wenn Sie auf dem RStudio-Server arbeiten, müssen Sie ausführen:
+
+```{r eval=FALSE}
+set_cmdstan_path("/opt/cmdstan/current/")
+```
+
+
+
+```{r}
+d <- read.csv("https://f-heinke.github.io/teaching-materials/bsf25/synthetic.RI.data.csv")
+d
+```
+
+
+```{r}
+d$x <- 299792458 / d$RI
+
+xt <- filter(d, group == "T") %>% pull( x )
+xk <- filter(d, group == "K") %>% pull( x )
+
+```
+
+```{r}
+boxplot( xt, xk )
+```
+
+
+
+```{r}
+mean_xt <- mean( xt )
+sd_xt   <- sd( xt )
+
+zt <- (xt - mean_xt) / sd_xt
+```
+
+```{r}
+boxplot( zt )
+```
+
+
+```{r}
+mean( zt )
+sd( zt )
+```
+
+```{r}
+zk <- ( xk - mean_xt ) / sd_xt
+```
+
+```{r}
+boxplot( zt, zk )
+```
+
+
+```{r}
+m <- cmdstan_model("m_uc1.stan")
+```
+
+```{r}
+md <- list(
+  Nt = length( zt ),
+  Nk = length( zk ),
+  
+  zt = zt,
+  zk = zk
+)
+```
+
+
+```{r}
+f <- m$sample( data =  md, parallel_chains = 4)
+```
+
+```{r}
+f
+```
+
+Posterior Check
+
+```{r}
+draws <- f$draws( format = "df" )
+head( draws )
+```
+
+```{r}
+plot( density( md$zt ))
+for(i in 1:500){
+  draw <- sample_n( draws, 1 )
+  
+  # R uses a different parameterization of the Student t,
+  # so to use rt() we need to transform Stan's parameterization into 
+  # the R worl:
+  zt_hat <- draw$mut + draw$sigmat * rt( md$Nt, df = draw$nut) # compute R's scale-location parameterization
+  
+  lines(density( zt_hat), col = adjustcolor(1, 0.1))
+}
+```
+
+```{r}
+plot( density( md$zk ))
+for(i in 1:500){
+  draw <- sample_n( draws, 1 )
+  
+  zk_hat <- draw$muk + draw$sigmak * rt( md$Nk, df = draw$nuk) # compute R's scale-location parameterization
+  
+  lines(density( zk_hat), col = adjustcolor(1, 0.1))
+}
+```
+
+
+```{r}
+plot( density( draws$mut), col = 4, lwd = 4, xlim = c(-3,3))
+lines( density( draws$muk), col = 1, lwd = 4)
+```
+
+
+```{r}
+sum( draws$mut <= draws$muk) / nrow( draws )
+```
+
+```{r}
+sum(( draws$mut - draws$muk) > 0 ) / nrow( draws )
+```
+
+```{r}
+plot( density( draws$mut - draws$muk ))
+abline( v = 0, lty = 2)
+```
+
+
+```{r}
+# devtools::install_github("https://github.com/f-heinke/bayesutils")
+library("bayesutils")
+```
+
+```{r}
+ggplot.densities( xs =  select( draws, muk, mut )  )
+```
+
+```{r}
+mcmc.forestplot( f, vars = c("muk", "mut"))
+```
+
+
+
+```{r}
+ggplot.dens( x = draws$mut - draws$muk )
+```
+
