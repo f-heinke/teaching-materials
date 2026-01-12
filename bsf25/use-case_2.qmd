@@ -1,0 +1,90 @@
+```{r}
+library("dplyr")
+library("cmdstanr")
+```
+
+Wenn Sie auf dem RStudio-Server arbeiten, müssen Sie ausführen:
+
+```{r eval=FALSE}
+set_cmdstan_path("/opt/cmdstan/current/")
+```
+
+```{r}
+d <- read.table("https://f-heinke.github.io/teaching-materials/bsf25/plane_crashes.tab")
+d
+```
+
+
+
+```{r}
+pc_year <- d %>% group_by(year) %>% summarise(n = n())
+```
+
+```{r}
+pc_year
+```
+
+```{r}
+pc_sel <- pc_year %>% filter(year >= 1990)
+md <- list(N = nrow(pc_sel),
+             counts = pc_sel$n,
+             years0 = pc_sel$year - 1990)
+```
+
+```{r}
+m <- cmdstan_model("m_uc2.stan")
+```
+
+```{r}
+f <- m$sample( data = md, parallel_chains = 4)
+```
+
+```{r}
+f$summary()
+```
+
+
+```{r}
+library("bayesutils")
+```
+
+
+
+```{r}
+draws <- f$draws( format = "df")
+```
+
+
+```{r}
+plot( md$years0, md$counts, type = "l", col = 4)
+
+for(i in 1:200){
+  
+  draw <- sample_n( draws, 1)
+  lambdas <- exp( draw$alpha + draw$beta * md$years0)
+  counts_postsim <- rpois( md$N, lambdas)
+  
+  lines( md$years0, counts_postsim, col = ablack())
+}
+lines( md$years0, md$counts, type = "l", col = 4, lwd = 3)
+```
+
+
+```{r}
+mean_beta  <- mean( draws$beta  )
+mean_alpha <- mean( draws$alpha ) 
+lambdas_mean <- exp( mean_alpha + mean_beta * md$years0 )
+lambdas_sd   <- sqrt( lambdas_mean )
+```
+
+```{r}
+plot( md$years0, md$counts, type = "l", col = 4, ylim = c(0, 100))
+lines( md$years0, lambdas_mean)
+lines( md$years0, lambdas_mean - lambdas_sd, lty = 2)
+lines( md$years0, lambdas_mean + lambdas_sd, lty = 2)
+
+
+```
+
+
+
